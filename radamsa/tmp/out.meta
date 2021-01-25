@@ -1,0 +1,2 @@
+seed: 735231154118148516634151
+muta-num: 2, source: "rad/generic.scm", generator: file, checksum: "7bfb6452a0ae5ac041b8f2e7671f679fe672d2215738c9d6b9826e28642899d4", nth: 1, path: "tmp/out", output: file-writer, length: 5521, pattern: many-dec
