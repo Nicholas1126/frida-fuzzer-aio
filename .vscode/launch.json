@@ -1,0 +1,46 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "DebugFridaAFL",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/frida-afl/test.py",
+            "stopOnEntry": false,
+            "cwd": "${workspaceFolder}/frida-afl",
+            "args": [
+                "-U",
+                "-spawn",
+                "-script", "${workspaceFolder}/frida-afl/test-compiled.js",
+                "-i", "${workspaceFolder}/tests/test-debug/in",
+                "-o", "${workspaceFolder}/tests/test-debug/out",
+                "-debug", "/data/local/tmp/test"
+            ]
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "stopOnEntry": true,
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "-U",
+                "-spawn",
+                "-script", "${workspaceFolder}/tests/test-debug/test.js",
+                "-i", "${workspaceFolder}/tests/test-debug/in",
+                "-o", "${workspaceFolder}/tests/test-debug/out",
+                "-debug", "/data/local/tmp/test"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Nodejs_debug",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/tests/test-debug/test.js"
+        }
+    ]
+}

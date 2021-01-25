@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+
+import frida
+import struct
+import sys
+import os
+import signal
+from ctypes import *
+from pwn import *
+import argparse
+
+FORKSRV_FD = 198
+SHM_ENV_VAR = "__AFL_SHM_ID"
+MAX_LEN = 1024
+
+platform = 'x64'
+
+def log2file(strout):
+    with open('out.txt', 'a+') as f:
+        print(strout, file=f)
+
+
+def getshmid(shmkey, shmsize, shmflg):
+    try:  
+        rt = CDLL('librt.so')  
+    except:  
+        rt = CDLL('librt.so.1')
+    shmget = rt.shmget  
+    shmget.argtypes = [c_int, c_size_t, c_int]  
+    shmget.restype = c_int 
+    shmid = shmget(shmkey, shmsize, shmflg)
+    return shmid
+
+def getaddrshmbyid(shmid):
+    try:  
+        rt = CDLL('librt.so')  
+    except:  
+        rt = CDLL('librt.so.1')
+    shmat = rt.shmat
+    shmat.argtypes = [c_int, POINTER(c_void_p), c_int]  
+    shmat.restype = c_void_p
+    addr = shmat(shmid, None, 0)
+    if addr == -1:
+        log2file("shmat is error.")
+        sys.exit(-1)
+    return addr
+
+def parse_coverage(data):
+    global platform
+    if data['cmd'] == 'coverage':
+        if platform == 'arm64':
+            log2file(data['addr'])
+            c_shmaddr_ptr = cast(c_ulonglong(data['addr']).value, POINTER(c_ulonglong))
+            c_shmaddr_ptr[0] += 1
+    return
+
+def on_message(message, data):
+    if 'payload' in message:
+        data = message['payload']
+        parse_coverage(data)
+    log2file(message)
+
+def init_dbg_file():
+    with open('out.txt', 'w') as f:
+        f.write('=====start log=====\n')
+
+
+__version__ = "1.0"
+DESCR = """Frida All In One [%s] by Nicholas.""" % __version__
+
+def spawnloop(args, shm_id):
+    if len(args.target) == 0:
+        print (" >> Target not specified!")
+        exit (1)
+    
+    app_name = args.target[0]
+    try:
+        app_name = int(app_name)
+        pid = app_name
+    except:
+        pass # not a PID
+
+    with open(args.script) as f:
+        code = f.read()
+
+    if args.U: # for usb channel
+        device = frida.get_usb_device()
+        if args.spawn:
+            pid = device.spawn(args.target)
+            session = device.attach(pid)
+        else:
+            session = device.attach(app_name)
+    elif args.N:
+        device = frida.get_device_manager().add_remote_device(args.N)
+        if args.spawn:
+            pid = device.spawn(args.target)
+            session = device.attach(pid)
+        else:
+            session = device.attach(app_name)
+    else:
+        if args.spawn:
+            pid = frida.spawn(args.target)
+            session = frida.attach(pid)
+        else:
+            session = frida.attach(app_name)
+
+    if args.debug:
+        session.enable_debugger()
+
+    script = session.create_script(code, runtime="v8")
+    script.on('message', on_message)
+    script.load()
+    
+    if args.arch in "arm64":
+        script.exports.setupshmremote(shm_id)
+        script.exports.settargetremote()
+    else:
+        # rpc callback
+        script.exports.setupshmlocal(shm_id)
+        script.exports.settargetlocal()
+
+    return pid, script, session
+
+def main():
+    init_dbg_file()
+    pid_bytes = "\x00"*4
+    input_fname = None # use stdin
+    # if len(sys.argv) > 1:
+    #     input_fname = sys.argv[1]
+ 
+    shm_str = os.getenv(SHM_ENV_VAR)
+    shm_id = 0
+    if shm_str:
+        shm_id = int(shm_str)
+    else:
+        print(SHM_ENV_VAR, "is not set! You have to run this script from AFL++. Try afl-showmap if you want to run only one time the script.")
+        #sys.exit(-1)
+        
+    has_frksrv = True
+    try:
+        os.write(FORKSRV_FD + 1, b"\x00"*4)
+    except:
+        has_frksrv = False
+
+    opt = argparse.ArgumentParser(description=DESCR, formatter_class=argparse.RawTextHelpFormatter)
+    opt.add_argument("-arch", action="store", default="x64", help="Target arch")
+    opt.add_argument("-U", action="store_true", help="Connect to USB")
+    opt.add_argument("-N", action="store", help="Connect to Network (e.g.: 192.168.111.34:27042, frida-server -l 192.168.111.34:27042)")
+    opt.add_argument("-spawn", action="store_true", help="Spawn instead of attach")
+    opt.add_argument("-script", action="store", default="fuzzer-agent.js", help="Script filename (default is fuzzer-agent.js)")
+    opt.add_argument('target', nargs=argparse.REMAINDER, help="Target program/pid (and arguments if spwaning)")
+    opt.add_argument("-debug", action="store_true", help="Enable javascript debugger")
+    args = opt.parse_args()
+
+    global platform
+    platform = args.arch
+
+    if args.arch in "arm64":
+        shm_id = getaddrshmbyid(shm_id)
+
+    pid, script, session = spawnloop(args, shm_id)
+    pid_bytes = struct.pack("I", pid)
+    
+    if has_frksrv:
+        while True:
+            if len(os.read(FORKSRV_FD, 4)) != 4: 
+                sys.exit(2)
+            if os.write(FORKSRV_FD + 1, pid_bytes) != 4: 
+                sys.exit(5)
+
+            has_crash = False
+            try:
+                if input_fname is not None:
+                    with open(input_fname, "rb") as f:
+                        payload = f.read()
+                else:
+                    payload = os.read(0, MAX_LEN)
+                try:
+                    
+                    while script.exports.fuzzingloop(payload.hex()):
+                        sleep(1)
+
+                except frida.core.RPCException as e:
+                    #log2file(e)
+                    has_crash = True
+            except Exception:
+                sys.exit(6)
+            
+            if has_crash:
+                #os.kill(pid, signal.SIGKILL)
+                #session.detach()
+                status = b'\x86\x00\x00\x00' # 134 abort
+                pid, script, session = spawnloop(args, shm_id)
+                pid_bytes = struct.pack("I", pid)
+            else: 
+                status = b"\x00\x00\x00\x00"
+            
+            if os.write(FORKSRV_FD + 1, status) != 4: 
+                sys.exit(7)
+    else:
+        has_crash = False
+            
+        try:
+            payload = os.read(0, MAX_LEN)
+
+            try:
+                script.exports.fuzzingloop(payload.hex())
+            except frida.core.RPCException as e:
+                #log2file (e)
+                has_crash = True
+
+        except Exception:
+            sys.exit(6)
+        
+        if has_crash:
+            sys.exit(134) # abort
+
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
