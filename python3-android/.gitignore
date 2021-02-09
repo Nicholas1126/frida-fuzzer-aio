@@ -1,0 +1,6 @@
+/build
+/src/*
+!/src/.keep
+*.pyc
+.mypy_cache/
+.gnupg/

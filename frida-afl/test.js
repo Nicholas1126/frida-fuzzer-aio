@@ -3,6 +3,10 @@ var utils = require("./utils.js");
 var typedef = require("./typedef.js");
 
 function entrypoint() {
+
+  var rb = BigInt(18446744073709551615);
+  var myNumber = Number(rb);
+  
   var x = 18446744073709551615n;
   var k = 1n;
   var c = typedef.uint64_t(BigInt(18446744073709551615)).getValue();
