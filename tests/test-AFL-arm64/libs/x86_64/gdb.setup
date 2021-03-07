@@ -1,2 +1,0 @@
-set solib-search-path ./obj/local/x86_64
-directory /home/nicholas/software/android-ndk-r21d/toolchains/llvm/prebuilt/linux-x86_64/sysroot jni

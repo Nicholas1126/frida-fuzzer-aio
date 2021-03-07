@@ -88,7 +88,9 @@ function str2ab(str) {
   return buf;
 }
 
-
+// var shmat_addr = Module.findExportByName(null, "shmat");
+// var shmat = new NativeFunction(shmat_addr, 'pointer', ['int', 'pointer', 'int']);
+// addr = shmat(3, ptr(0), 0);
 
 //size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 rpc.exports = {

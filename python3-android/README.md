@@ -21,10 +21,10 @@ Running requires:
 
 Build
 -----
-
+0. pyenv shell 3.9.0 for build python 3.9.0.
 1. Run `./clean.sh` for good measure.
 2. For every API Level/architecture combination you wish to build for:
-   * `ARCH=arm ANDROID_API=21 ./build.sh` to build everything!
+   * `ARCH=arm64 ANDROID_API=21 ./build.sh --enable-shared` to build everything!
 
 Build using Docker/Podman
 ------------------
@@ -73,3 +73,8 @@ Known Issues
 ------------
 
 No big issues! yay
+
+
+New features
+------------
+1. Add `--enable-shared` build command for frida runtime needed.

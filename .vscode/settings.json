@@ -1,3 +1,6 @@
 {
-    "python.pythonPath": "/home/nicholas/.pyenv/versions/3.6.10/bin/python3"
+    "python.pythonPath": "/home/nicholas/.pyenv/versions/3.6.10/bin/python3",
+    "files.associations": {
+        "stdlib.h": "c"
+    }
 }

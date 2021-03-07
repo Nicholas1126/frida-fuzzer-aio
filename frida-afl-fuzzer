@@ -6,50 +6,50 @@ import sys
 import os
 import signal
 from ctypes import *
-from pwn import *
 import argparse
-
+import time
 FORKSRV_FD = 198
 SHM_ENV_VAR = "__AFL_SHM_ID"
 MAX_LEN = 1024
 
-platform = 'x64'
+platform = False
 
 def log2file(strout):
     with open('out.txt', 'a+') as f:
         print(strout, file=f)
 
-
-def getshmid(shmkey, shmsize, shmflg):
-    try:  
-        rt = CDLL('librt.so')  
-    except:  
-        rt = CDLL('librt.so.1')
-    shmget = rt.shmget  
-    shmget.argtypes = [c_int, c_size_t, c_int]  
-    shmget.restype = c_int 
-    shmid = shmget(shmkey, shmsize, shmflg)
-    return shmid
+# def getshmid(shmkey, shmsize, shmflg):
+#     try:  
+#         rt = CDLL('/apex/com.android.runtime/lib64/bionic/libc.so')  
+#     except Exception as e:
+#         log2file(e)  
+#         rt = CDLL('librt.so')
+#     shmget = rt.shmget  
+#     shmget.argtypes = [c_int, c_size_t, c_int]  
+#     shmget.restype = c_int 
+#     shmid = shmget(shmkey, shmsize, shmflg)
+#     return shmid
 
 def getaddrshmbyid(shmid):
+    log2file("getaddrshmbyid enter")
     try:  
         rt = CDLL('librt.so')  
     except:  
         rt = CDLL('librt.so.1')
+    log2file("getaddrshmbyid find")
     shmat = rt.shmat
     shmat.argtypes = [c_int, POINTER(c_void_p), c_int]  
     shmat.restype = c_void_p
     addr = shmat(shmid, None, 0)
-    if addr == -1:
+    if addr == 18446744073709551615:
         log2file("shmat is error.")
-        sys.exit(-1)
     return addr
 
 def parse_coverage(data):
     global platform
     if data['cmd'] == 'coverage':
-        if platform == 'arm64':
-            log2file(data['addr'])
+        if platform:
+            #log2file(data['addr'])
             c_shmaddr_ptr = cast(c_ulonglong(data['addr']).value, POINTER(c_ulonglong))
             c_shmaddr_ptr[0] += 1
     return
@@ -58,7 +58,7 @@ def on_message(message, data):
     if 'payload' in message:
         data = message['payload']
         parse_coverage(data)
-    log2file(message)
+    #log2file(message)
 
 def init_dbg_file():
     with open('out.txt', 'w') as f:
@@ -70,7 +70,6 @@ DESCR = """Frida All In One [%s] by Nicholas.""" % __version__
 
 def spawnloop(args, shm_id):
     if len(args.target) == 0:
-        print (" >> Target not specified!")
         exit (1)
     
     app_name = args.target[0]
@@ -111,14 +110,17 @@ def spawnloop(args, shm_id):
     script.on('message', on_message)
     script.load()
     
-    if args.arch in "arm64":
-        script.exports.setupshmremote(shm_id)
-        script.exports.settargetremote()
-    else:
-        # rpc callback
-        script.exports.setupshmlocal(shm_id)
-        script.exports.settargetlocal()
-
+    try:
+        if args.C:
+            script.exports.setupshmremote(shm_id)
+            script.exports.settargetremote()
+        else:
+            # rpc callback
+            script.exports.setupshmlocal(shm_id)
+            script.exports.settargetlocal()
+    except frida.core.RPCException as e:
+        log2file(e)
+    
     return pid, script, session
 
 def main():
@@ -135,16 +137,16 @@ def main():
     else:
         print(SHM_ENV_VAR, "is not set! You have to run this script from AFL++. Try afl-showmap if you want to run only one time the script.")
         #sys.exit(-1)
-        
     has_frksrv = True
+    
     try:
         os.write(FORKSRV_FD + 1, b"\x00"*4)
     except:
         has_frksrv = False
-
+    
     opt = argparse.ArgumentParser(description=DESCR, formatter_class=argparse.RawTextHelpFormatter)
-    opt.add_argument("-arch", action="store", default="x64", help="Target arch")
-    opt.add_argument("-U", action="store_true", help="Connect to USB")
+    opt.add_argument("-C", action="store_true", default=False, help="Cross platform fuzz")
+    opt.add_argument("-U", action="store_true", default=False, help="Connect to USB")
     opt.add_argument("-N", action="store", help="Connect to Network (e.g.: 192.168.111.34:27042, frida-server -l 192.168.111.34:27042)")
     opt.add_argument("-spawn", action="store_true", help="Spawn instead of attach")
     opt.add_argument("-script", action="store", default="fuzzer-agent.js", help="Script filename (default is fuzzer-agent.js)")
@@ -153,20 +155,20 @@ def main():
     args = opt.parse_args()
 
     global platform
-    platform = args.arch
+    platform = args.C
 
-    if args.arch in "arm64":
+    if args.C:
         shm_id = getaddrshmbyid(shm_id)
-
+    
     pid, script, session = spawnloop(args, shm_id)
     pid_bytes = struct.pack("I", pid)
     
     if has_frksrv:
         while True:
             if len(os.read(FORKSRV_FD, 4)) != 4: 
-                sys.exit(2)
+                sys.exit(7)
             if os.write(FORKSRV_FD + 1, pid_bytes) != 4: 
-                sys.exit(5)
+                sys.exit(7)
 
             has_crash = False
             try:
@@ -178,42 +180,44 @@ def main():
                 try:
                     
                     while script.exports.fuzzingloop(payload.hex()):
-                        sleep(1)
+                        time.sleep(1)
 
                 except frida.core.RPCException as e:
                     #log2file(e)
                     has_crash = True
-            except Exception:
+            except Exception as e:
                 sys.exit(6)
             
             if has_crash:
                 #os.kill(pid, signal.SIGKILL)
                 #session.detach()
                 status = b'\x86\x00\x00\x00' # 134 abort
+                if os.write(FORKSRV_FD + 1, status) != 4: 
+                    sys.exit(7)
+
                 pid, script, session = spawnloop(args, shm_id)
                 pid_bytes = struct.pack("I", pid)
             else: 
                 status = b"\x00\x00\x00\x00"
+                if os.write(FORKSRV_FD + 1, status) != 4: 
+                    sys.exit(7)
+    # else:
+    #     has_crash = False
             
-            if os.write(FORKSRV_FD + 1, status) != 4: 
-                sys.exit(7)
-    else:
-        has_crash = False
-            
-        try:
-            payload = os.read(0, MAX_LEN)
+    #     try:
+    #         payload = os.read(0, MAX_LEN)
 
-            try:
-                script.exports.fuzzingloop(payload.hex())
-            except frida.core.RPCException as e:
-                #log2file (e)
-                has_crash = True
+    #         try:
+    #             script.exports.fuzzingloop(payload.hex())
+    #         except frida.core.RPCException as e:
+    #             log2file (e)
+    #             has_crash = True
 
-        except Exception:
-            sys.exit(6)
+    #     except Exception:
+    #         sys.exit(6)
         
-        if has_crash:
-            sys.exit(134) # abort
+    #     if has_crash:
+    #         sys.exit(134) # abort
 
     sys.exit(0)
 

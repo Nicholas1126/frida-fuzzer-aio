@@ -1,0 +1,4 @@
+APP_PLATFORM := android-22
+APP_ALLOW_MISSING_DEPS=true
+APP_ABI := all
+APP_BUILD_SCRIPT := Android.mk

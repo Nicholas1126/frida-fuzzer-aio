@@ -1,5 +1,3 @@
-var logger = require("./log.js");
-
 exports.afl_area_ptr = null;
 exports.target_been_trigger = false;
 
@@ -241,8 +239,8 @@ exports.start_tracing_local = function(target_module, target_function, target_ar
         cur_loc &= MAP_SIZE - 1;
 
         //afl_area[cur_loc ^ prev_loc]++;
-        var x = exports.afl_area_ptr.add(cur_loc ^ prev_loc);
-        x.writeU8((x.readU8() +1) & 0xff);
+        var x = exports.afl_area_ptr.add((cur_loc ^ prev_loc));
+        x.writeU8((x.readU8() + 1) & 0xff);
 
         prev_loc = cur_loc >> 1;
   

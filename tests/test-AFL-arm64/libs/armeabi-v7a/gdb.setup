@@ -1,2 +1,0 @@
-set solib-search-path ./obj/local/armeabi-v7a
-directory /home/nicholas/software/android-ndk-r21d/toolchains/llvm/prebuilt/linux-x86_64/sysroot jni

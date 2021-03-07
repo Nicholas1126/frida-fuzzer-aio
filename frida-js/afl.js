@@ -27,11 +27,13 @@ rpc.exports = {
 
     setupshmremote: function (shm_id) {
         aflinstr.afl_area_ptr = shm_id;
+        return aflinstr.afl_area_ptr;
     },
 
 
     setupshmlocal: function (shm_id) {
         aflinstr.afl_area_ptr = shmat(shm_id, ptr(0), 0);
+        return aflinstr.afl_area_ptr;
     },
 
     settargetremote: function () {
